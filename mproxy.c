@@ -12,6 +12,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <fcntl.h>
+#include <time.h>
 
 #define BUF_SIZE        8192
 #define MAX_HEADER_SIZE 8192
@@ -37,7 +38,14 @@
 #define HEADER_BUFFER_FULL      -10
 #define BAD_HTTP_PROTOCOL       -11
 
-#define LOG(fmt...) do { fprintf(stderr, "%s %s", __DATE__, __TIME__); fprintf(stderr, ##fmt);} while(0)
+#define LOG(fmt...) do {\
+    time_t timep;\
+    struct tm *p;\
+    time(&timep);\
+    p = localtime(&timep);\
+    fprintf(stderr, "%d-%d-%d %d:%d:%d", (1900+p->tm_year), (1+p->tm_mon), p->tm_mday, p->tm_hour, p->tm_min, p->tm_sec);\
+    fprintf(stderr, ##fmt);\
+}while(0)
 
 enum {
     FLG_NONE = 0, // 正常数据流不进行编解码
@@ -402,8 +410,8 @@ int send_data(int socket, char *buffer, int len) {
 void forward_header(int destination_sock) {
     rewrite_header();
 #ifdef DEBUG
-    LOG("=========== The Forward HEAD ==========");
-		LOG("%s\n", header_buffer);
+    LOG("\n=========== The Forward HEAD ==========\n");
+	LOG("%s\n", header_buffer);
 #endif
     int len = strlen(header_buffer);
     send_data(destination_sock, header_buffer, len);
@@ -415,7 +423,7 @@ void forward_header(int destination_sock) {
 void forward_data(int source_sock, int destination_sock) {
     char buffer[BUF_SIZE];
     int  n;
-    while ((n = receive_data(source_sock, buffer, BUF_SIZE))) {
+    while ((n = receive_data(source_sock, buffer, BUF_SIZE)) > 0) {
         send_data(destination_sock, buffer, n);
     }
     shutdown(destination_sock, SHUT_RDWR);
@@ -495,7 +503,7 @@ void handle_client(int client_sock, struct sockaddr_in client_addr) {
         if (is_http_tunnel) {
             send_tunnel_ok(client_sock);
         }
-        forward_data(client_sock, remote_sock);
+        forward_data(remote_sock, client_sock);
         exit(0);
     }
     close(remote_sock);
@@ -538,7 +546,7 @@ void save_master_pid(int pid)
 int take_master_pid(char *pid_name)
 {
     int fd;
-    int *num;
+    int *num = NULL;
     fd = open(pid_name, O_RDONLY);
     read(fd, num, sizeof(num));
     close(fd);
